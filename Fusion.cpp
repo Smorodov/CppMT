@@ -16,7 +16,7 @@ void Fusion::preferFirst(const vector<Point2f> & points_first, const vector<int>
         int class_second = classes_second[i];
 
         bool found = false;
-        for (size_t j = 0; j < points_first.size(); j++)
+        for (size_t j = 0; j < min(points_first.size(), classes_first.size()); j++)
         {
             int class_first = classes_first[j];
             if (class_first == class_second) found = true;

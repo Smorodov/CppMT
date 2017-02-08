@@ -54,9 +54,9 @@ void Consensus::estimateScaleRotation(const vector<Point2f> & points, const vect
     vector<float> changes_angles;
     if (estimate_rotation) changes_angles.reserve(points.size()*points.size());
 
-    for (size_t i = 0; i < points.size(); i++)
+    for (size_t i = 0; i < min(points.size(),classes.size()); i++)
     {
-        for (size_t j = 0; j < points.size(); j++)
+        for (size_t j = 0; j < min(points.size(), classes.size()); j++)
         {
             if (classes[i] != classes[j])
             {
@@ -118,7 +118,7 @@ void Consensus::findConsensus(const vector<Point2f> & points, const vector<int> 
 
     //Compute votes
     vector<Point2f> votes(points.size());
-    for (size_t i = 0; i < points.size(); i++)
+    for (size_t i = 0; i < min(points.size(), classes.size()); i++)
     {
         votes[i] = points[i] - scale * rotate(points_normalized[classes[i]], rotation);
     }
@@ -130,9 +130,9 @@ void Consensus::findConsensus(const vector<Point2f> & points, const vector<int> 
 
     //Compute pairwise distances between votes
     int index = 0;
-    for (size_t i = 0; i < points.size(); i++)
+    for (size_t i = 0; i < min(points.size(),votes.size()); i++)
     {
-        for (size_t j = i+1; j < points.size(); j++)
+        for (size_t j = i+1; j < min(points.size(),votes.size()); j++)
         {
             //TODO: This index calculation is correct, but is it a good thing?
             //int index = i * (points.size() - 1) - (i*i + i) / 2 + j - 1;

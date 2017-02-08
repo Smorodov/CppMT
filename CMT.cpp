@@ -2,8 +2,144 @@
 
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <iostream>
+
+float sign(Point2f p1, Point2f p2, Point2f p3)
+{
+    return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+}
+
+bool PointInTriangle(Point2f pt, Point2f v1, Point2f v2, Point2f v3)
+{
+    bool b1, b2, b3;
+
+    b1 = sign(pt, v1, v2) < 0.0f;
+    b2 = sign(pt, v2, v3) < 0.0f;
+    b3 = sign(pt, v3, v1) < 0.0f;
+
+    return ((b1 == b2) && (b2 == b3));
+}
+
+bool pointInRR(const RotatedRect& rr, Point2f& p)
+{
+   Point2f vertices[4];
+   rr.points(vertices);
+   bool t1 = PointInTriangle(p, vertices[2], vertices[1], vertices[0]);
+   bool t2 = PointInTriangle(p, vertices[0], vertices[3], vertices[2]);
+  
+   std::cout << p << std::endl ;
+  
+   return (t1 || t2);
+
+}
 
 namespace cmt {
+
+    void CMT::initialize(const Mat im_gray, const RotatedRect rr)
+    {
+        points_active.clear();
+        classes_active.clear();
+        FILE_LOG(logDEBUG) << "CMT::initialize() call";
+
+        //Remember initial size
+        size_initial = rr.size;
+
+        //Remember initial image
+        im_prev = im_gray.clone();
+
+
+        //Initialize rotated bounding box
+        bb_rot = rr;// RotatedRect(center, size_initial, 0.0);
+
+        //Initialize detector and descriptor
+#if CV_MAJOR_VERSION > 2
+        detector = cv::FastFeatureDetector::create();
+        descriptor = cv::BRISK::create();
+#else
+        detector = FeatureDetector::create(str_detector);
+        descriptor = DescriptorExtractor::create(str_descriptor);
+#endif
+
+        //Get initial keypoints in whole image and compute their descriptors
+        vector<KeyPoint> keypoints;
+        detector->detect(im_gray, keypoints);
+
+        //Divide keypoints into foreground and background keypoints according to selection
+        vector<KeyPoint> keypoints_fg;
+        vector<KeyPoint> keypoints_bg;
+
+        for (size_t i = 0; i < keypoints.size(); i++)
+        {
+            KeyPoint k = keypoints[i];
+            Point2f pt = k.pt;
+
+
+            //if (pt.x > rect.x && pt.y > rect.y && pt.x < rect.br().x && pt.y < rect.br().y)
+            if(pointInRR(rr, pt))
+            {
+                keypoints_fg.push_back(k);
+            }
+
+            else
+            {
+                keypoints_bg.push_back(k);
+            }
+
+        }
+
+        //Create foreground classes
+        vector<int> classes_fg;
+        classes_fg.reserve(keypoints_fg.size());
+        for (size_t i = 0; i < keypoints_fg.size(); i++)
+        {
+            classes_fg.push_back(i);
+        }
+
+        //Compute foreground/background features
+        Mat descs_fg;
+        Mat descs_bg;
+        descriptor->compute(im_gray, keypoints_fg, descs_fg);
+        descriptor->compute(im_gray, keypoints_bg, descs_bg);
+
+        //Only now is the right time to convert keypoints to points, as compute() might remove some keypoints
+        vector<Point2f> points_fg;
+        vector<Point2f> points_bg;
+
+        for (size_t i = 0; i < keypoints_fg.size(); i++)
+        {
+            points_fg.push_back(keypoints_fg[i].pt);
+        }
+
+        FILE_LOG(logDEBUG) << points_fg.size() << " foreground points.";
+
+        for (size_t i = 0; i < keypoints_bg.size(); i++)
+        {
+            points_bg.push_back(keypoints_bg[i].pt);
+        }
+
+        //Create normalized points
+        vector<Point2f> points_normalized;
+        for (size_t i = 0; i < points_fg.size(); i++)
+        {
+            points_normalized.push_back(points_fg[i] - rr.center);
+        }
+
+        //Initialize matcher
+        matcher.initialize(points_normalized, descs_fg, classes_fg, descs_bg, rr.center);
+
+        //Initialize consensus
+        consensus.initialize(points_normalized);
+
+        //Create initial set of active keypoints
+        for (size_t i = 0; i < keypoints_fg.size(); i++)
+        {
+            points_active.push_back(keypoints_fg[i].pt);
+            classes_active = classes_fg;
+        }
+
+        FILE_LOG(logDEBUG) << "CMT::initialize() return";
+    }
+
 
 void CMT::initialize(const Mat im_gray, const Rect rect)
 {
@@ -121,14 +257,15 @@ void CMT::processFrame(Mat im_gray) {
 
     //keep only successful classes
     vector<int> classes_tracked;
-    for (size_t i = 0; i < classes_active.size(); i++)
+    
+    for (size_t i = 0; (i < classes_active.size() && i<status.size()); i++)
     {
         if (status[i])
         {
             classes_tracked.push_back(classes_active[i]);
         }
-
     }
+    
 
     //Detect keypoints, compute descriptors
     vector<KeyPoint> keypoints;

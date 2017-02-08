@@ -64,7 +64,7 @@ int display(Mat im, CMT & cmt)
     //It is ok to draw on im itself, as CMT only uses the grayscale image
     for(size_t i = 0; i < cmt.points_active.size(); i++)
     {
-        circle(im, cmt.points_active[i], 2, Scalar(255,0,0));
+      //  circle(im, cmt.points_active[i], 2, Scalar(255,0,0));
     }
 
     Point2f vertices[4];
@@ -206,9 +206,9 @@ int main(int argc, char **argv)
             case '?':
                 return 1;
         }
-
     }
 
+    cmt.consensus.estimate_rotation = true;
     // Can only skip frames or milliseconds, not both.
     if (skip_frames > 0 && skip_msecs > 0)
     {
